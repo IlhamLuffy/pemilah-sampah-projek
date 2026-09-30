@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Smart Bin IoT</title>
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #eef3f8;
+  color: #17202a;
+}
+
+header {
+  background: linear-gradient(135deg,#14213d,#243b64);
+  color: white;
+  padding: 25px 6%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+h1 {
+  margin: 0;
+}
+
+.subtitle {
+  opacity: .8;
+  margin-top: 6px;
+}
+
+.connection {
+  padding: 10px 16px;
+  border-radius: 20px;
+  background: #ffffff25;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 25px auto;
+  padding: 0 18px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(220px,1fr));
+  gap: 18px;
+}
+
+.card {
+  background: white;
+  padding: 22px;
+  border-radius: 18px;
+  box-shadow: 0 8px 25px #1d355715;
+}
+
+.icon {
+  font-size: 30px;
+}
+
+.label {
+  color: #6b7280;
+  margin-top: 8px;
+}
+
+.value {
+  font-size: 30px;
+  font-weight: 800;
+  margin-top: 5px;
+}
+
+.status {
+  margin-top: 10px;
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #edf2f7;
+}
+
+.level {
+  height: 16px;
+  margin-top: 12px;
+  background: #e5e7eb;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.level-fill {
+  height: 100%;
+  width: 0%;
+  transition: .4s;
+  background: #2563eb;
+}
+
+.panel {
+  background: white;
+  padding: 22px;
+  border-radius: 18px;
+  margin-top: 20px;
+  box-shadow: 0 8px 25px #1d355715;
+}
+
+.chart {
+  height: 300px;
+}
+
+.alert {
+  display: none;
+  background: #fff0f0;
+  color: #991b1b;
+  border: 1px solid #ffcaca;
+  padding: 15px;
+  border-radius: 14px;
+  margin-bottom: 18px;
+  font-weight: bold;
+}
+
+.notify-btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: #243b64;
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.notify-btn:hover {
+  background: #162744;
+}
+
+.notify-ok {
+  color: #15803d;
+  font-weight: bold;
+}
+
+.notify-no {
+  color: #b91c1c;
+  font-weight: bold;
+}
+
+pre {
+  background: #111827;
+  color: #e5e7eb;
+  padding: 15px;
+  border-radius: 10px;
+  overflow: auto;
+}
+
+@media(max-width:600px) {
+  h1 {
+    font-size: 23px;
+  }
+}
+</style>
+
+</head>
+
+<body>
+
+<header>
+
+<div>
+<h1>🗑️ SISTEM PEMILAH SAMPAH ORGANIK DAN ANORGANIK</h1>
+
+<div class="subtitle">
+ESP8266 • MQTT • Realtime
+</div>
+</div>
+
+<div id="connection" class="connection">
+🟡 Menghubungkan MQTT...
+</div>
+
+</header>
+
+<div class="container">
+
+<!-- ALERT -->
+
+<div id="alertBox" class="alert" role="alert" aria-live="assertive"></div>
+
+<!-- NOTIFIKASI -->
+
+<div class="panel" style="margin-top:0; margin-bottom:18px">
+
+<strong>🔔 NOTIFIKASI SAMPAH PENUH</strong>
+
+<p style="margin:8px 0">
+Aktifkan notifikasi browser agar peringatan tong penuh
+dapat muncul di komputer.
+</p>
+
+<button
+id="enableNotifications"
+class="notify-btn"
+onclick="enableNotifications()">
+🔔 Aktifkan Notifikasi </button>
+
+<span id="notifyStatus" style="margin-left:10px">
+Belum diaktifkan
+</span>
+
+</div>
+
+<!-- DATA UTAMA -->
+
+<div class="cards">
+
+<div class="card">
+<div class="icon">📦</div>
+<div class="label">Objek Tatakan</div>
+<div id="objek" class="value">-</div>
+<div id="objekStatus" class="status">Menunggu</div>
+</div>
+
+<div class="card">
+<div class="icon">💧</div>
+<div class="label">Moisture</div>
+<div id="moisture" class="value">-</div>
+<div class="status">ADC</div>
+</div>
+
+<div class="card">
+<div class="icon">🔀</div>
+<div class="label">Klasifikasi</div>
+<div id="klasifikasi" class="value">MENUNGGU</div>
+</div>
+
+<div class="card">
+<div class="icon">⚙️</div>
+<div class="label">Servo</div>
+<div id="servo" class="value">-</div>
+<div class="status">derajat</div>
+</div>
+
+</div>
+
+<!-- LEVEL TONG -->
+
+<div class="cards" style="margin-top:18px">
+
+<div class="card">
+
+<div class="icon">🟢</div>
+<div class="label">Tong Organik</div>
+
+<div class="value">
+<span id="levelOrganik">-</span>%
+</div>
+
+<div class="level">
+<div id="barOrganik" class="level-fill"></div>
+</div>
+
+<p>
+Jarak:
+<span id="jarakOrganik">-</span> cm
+</p>
+
+</div>
+
+<div class="card">
+
+<div class="icon">🔵</div>
+<div class="label">Tong Non-Organik</div>
+
+<div class="value">
+<span id="levelNonOrganik">-</span>%
+</div>
+
+<div class="level">
+<div id="barNonOrganik" class="level-fill"></div>
+</div>
+
+<p>
+Jarak:
+<span id="jarakNonOrganik">-</span> cm
+</p>
+
+</div>
+
+</div>
+
+<!-- TOTAL -->
+
+<div class="cards" style="margin-top:18px">
+
+<div class="card">
+<div class="icon">♻️</div>
+<div class="label">Total Organik</div>
+<div id="totalOrganik" class="value">0</div>
+</div>
+
+<div class="card">
+<div class="icon">🗑️</div>
+<div class="label">Total Non-Organik</div>
+<div id="totalNonOrganik" class="value">0</div>
+</div>
+
+</div>
+
+<!-- GRAFIK -->
+
+<div class="panel">
+
+<h2>📈 Grafik Level Tong</h2>
+
+<div class="chart">
+<canvas id="chart"></canvas>
+</div>
+
+</div>
+
+<!-- DATA MQTT -->
+
+<div class="panel">
+
+<h2>📡 Data MQTT</h2>
+
+<pre id="raw">Belum ada data.</pre>
+
+</div>
+
+</div>
+
+<script>
+
+// =====================================================
+// PENGATURAN NOTIFIKASI
+// =====================================================
+
+// Menyimpan waktu notifikasi terakhir
+const statusNotifikasi = {};
+
+// Interval anti-spam
+// 5 menit = 300000 ms
+const NOTIF_INTERVAL = 300000;
+
+
+// =====================================================
+// CEK STATUS NOTIFIKASI SAAT HALAMAN DIBUKA
+// =====================================================
+
+function cekStatusNotifikasi() {
+
+  const status = document.getElementById("notifyStatus");
+  const tombol = document.getElementById("enableNotifications");
+
+  if (!("Notification" in window)) {
+
+    status.textContent =
+      "❌ Browser tidak mendukung notifikasi.";
+
+    status.className = "notify-no";
+
+    tombol.disabled = true;
+
+    return;
+  }
+
+
+  if (Notification.permission === "granted") {
+
+    status.textContent =
+      "✅ Notifikasi aktif";
+
+    status.className = "notify-ok";
+
+    tombol.textContent =
+      "✅ Notifikasi Sudah Aktif";
+
+  }
+
+  else if (Notification.permission === "denied") {
+
+    status.textContent =
+      "❌ Notifikasi diblokir browser";
+
+    status.className = "notify-no";
+
+    tombol.textContent =
+      "🔒 Notifikasi Diblokir";
+
+  }
+
+  else {
+
+    status.textContent =
+      "⚪ Belum diaktifkan";
+
+    status.className = "";
+
+  }
+
+}
+
+
+// =====================================================
+// AKTIFKAN NOTIFIKASI
+// =====================================================
+
+async function enableNotifications() {
+
+  if (!("Notification" in window)) {
+
+    alert(
+      "Browser kamu tidak mendukung notifikasi."
+    );
+
+    return;
+  }
+
+
+  try {
+
+    const permission =
+      await Notification.requestPermission();
+
+
+    if (permission === "granted") {
+
+      document.getElementById("notifyStatus")
+        .textContent =
+        "✅ Notifikasi aktif";
+
+      document.getElementById("notifyStatus")
+        .className =
+        "notify-ok";
+
+
+      document.getElementById("enableNotifications")
+        .textContent =
+        "✅ Notifikasi Sudah Aktif";
+
+
+      // Tes notifikasi
+      new Notification(
+        "🗑️ Smart Bin",
+        {
+          body:
+            "Notifikasi Smart Bin berhasil diaktifkan."
+        }
+      );
+
+    }
+
+    else if (permission === "denied") {
+
+      document.getElementById("notifyStatus")
+        .textContent =
+        "❌ Notifikasi diblokir";
+
+      document.getElementById("notifyStatus")
+        .className =
+        "notify-no";
+
+      alert(
+        "Notifikasi diblokir oleh browser. " +
+        "Silakan izinkan notifikasi untuk halaman ini."
+      );
+
+    }
+
+    else {
+
+      document.getElementById("notifyStatus")
+        .textContent =
+        "⚪ Izin belum diberikan.";
+
+    }
+
+  }
+
+  catch(error) {
+
+    console.error(
+      "Error notifikasi:",
+      error
+    );
+
+  }
+
+}
+
+
+// =====================================================
+// KIRIM NOTIFIKASI
+// =====================================================
+
+function kirimNotifikasi(judul, isi) {
+
+  if (
+    !("Notification" in window) ||
+    Notification.permission !== "granted"
+  ) {
+
+    return;
+
+  }
+
+
+  const sekarang = Date.now();
+
+
+  // Cegah notifikasi muncul terus menerus
+  if (
+    statusNotifikasi[judul] &&
+    sekarang -
+    statusNotifikasi[judul] <
+    NOTIF_INTERVAL
+  ) {
+
+    return;
+
+  }
+
+
+  statusNotifikasi[judul] =
+    sekarang;
+
+
+  new Notification(
+    judul,
+    {
+      body: isi,
+      tag: judul,
+      renotify: false
+    }
+  );
+
+}
+
+
+// =====================================================
+// MQTT
+// =====================================================
+
+const MQTT_URL =
+  "wss://broker.emqx.io:8084/mqtt";
+
+
+const TOPIC =
+  "smartbin/esp8266_001/data";
+
+
+const client =
+  mqtt.connect(
+    MQTT_URL,
+    {
+
+      clientId:
+        "dashboard_" +
+        Math.random()
+          .toString(16)
+          .slice(2),
+
+      clean: true,
+
+      connectTimeout:
+        10000,
+
+      reconnectPeriod:
+        3000
+
+    }
+  );
+
+
+// =====================================================
+// CHART
+// =====================================================
+
+const chart =
+  new Chart(
+    document.getElementById("chart"),
+    {
+
+      type: "line",
+
+      data: {
+
+        labels: [],
+
+        datasets: [
+
+          {
+            label: "Organik (%)",
+            data: [],
+            tension: .35
+          },
+
+          {
+            label: "Non-Organik (%)",
+            data: [],
+            tension: .35
+          }
+
+        ]
+
+      },
+
+      options: {
+
+        responsive: true,
+
+        maintainAspectRatio: false,
+
+        scales: {
+
+          y: {
+
+            beginAtZero: true,
+
+            max: 100
+
+          }
+
+        }
+
+      }
+
+    }
+  );
+
+
+function addChart(a,b) {
+
+  chart.data.labels.push(
+    new Date().toLocaleTimeString()
+  );
+
+
+  chart.data.datasets[0]
+    .data.push(a);
+
+
+  chart.data.datasets[1]
+    .data.push(b);
+
+
+  if (
+    chart.data.labels.length > 20
+  ) {
+
+    chart.data.labels.shift();
+
+    chart.data.datasets[0]
+      .data.shift();
+
+    chart.data.datasets[1]
+      .data.shift();
+
+  }
+
+
+  chart.update("none");
+
+}
+
+
+// =====================================================
+// MQTT CONNECT
+// =====================================================
+
+client.on(
+  "connect",
+  () => {
+
+    document.getElementById(
+      "connection"
+    ).textContent =
+      "🟢 MQTT TERHUBUNG";
+
+
+    client.subscribe(
+      TOPIC,
+      error => {
+
+        if (error) {
+
+          console.error(
+            "Gagal subscribe:",
+            error
+          );
+
+        }
+
+      }
+    );
+
+
+    console.log(
+      "MQTT connected"
+    );
+
+  }
+);
+
+
+// =====================================================
+// MQTT ERROR
+// =====================================================
+
+client.on(
+  "error",
+  error => {
+
+    console.error(
+      "MQTT Error:",
+      error
+    );
+
+    document.getElementById(
+      "connection"
+    ).textContent =
+      "🔴 MQTT ERROR";
+
+  }
+);
+
+
+// =====================================================
+// RECONNECT
+// =====================================================
+
+client.on(
+  "reconnect",
+  () => {
+
+    document.getElementById(
+      "connection"
+    ).textContent =
+      "🟡 Menghubungkan ulang...";
+
+  }
+);
+
+
+// =====================================================
+// OFFLINE
+// =====================================================
+
+client.on(
+  "offline",
+  () => {
+
+    document.getElementById(
+      "connection"
+    ).textContent =
+      "🔴 MQTT OFFLINE";
+
+  }
+);
+
+
+// =====================================================
+// MESSAGE MQTT
+// =====================================================
+
+client.on(
+  "message",
+  (topic,message) => {
+
+    try {
+
+      const d =
+        JSON.parse(
+          message.toString()
+        );
+
+
+      console.log(
+        "Data MQTT:",
+        d
+      );
+
+
+      // ===============================================
+      // DATA
+      // ===============================================
+
+      const moisture =
+        Number(d.moisture);
+
+
+      const jarakOrganik =
+        Number(d.jarak_organik);
+
+
+      const jarakNonOrganik =
+        Number(d.jarak_nonorganik);
+
+
+      const levelOrganik =
+        Number(d.level_organik);
+
+
+      const levelNonOrganik =
+        Number(d.level_nonorganik);
+
+
+      // ===============================================
+      // OBJEK
+      // ===============================================
+
+      document.getElementById(
+        "objek"
+      ).textContent =
+        d.objek
+          ? "ADA"
+          : "TIDAK ADA";
+
+
+      document.getElementById(
+        "objekStatus"
+      ).textContent =
+        d.objek
+          ? "🟢 Objek terdeteksi"
+          : "⚪ Tidak ada objek";
+
+
+      // ===============================================
+      // MOISTURE
+      // ===============================================
+
+      document.getElementById(
+        "moisture"
+      ).textContent =
+        moisture;
+
+
+      // ===============================================
+      // KLASIFIKASI
+      // ===============================================
+
+      document.getElementById(
+        "klasifikasi"
+      ).textContent =
+        d.klasifikasi ||
+        "MENUNGGU";
+
+
+      // ===============================================
+      // SERVO
+      // ===============================================
+
+      document.getElementById(
+        "servo"
+      ).textContent =
+        d.servo;
+
+
+      // ===============================================
+      // JARAK
+      // ===============================================
+
+      document.getElementById(
+        "jarakOrganik"
+      ).textContent =
+        Number.isFinite(jarakOrganik)
+          ? jarakOrganik.toFixed(1)
+          : "-";
+
+
+      document.getElementById(
+        "jarakNonOrganik"
+      ).textContent =
+        Number.isFinite(jarakNonOrganik)
+          ? jarakNonOrganik.toFixed(1)
+          : "-";
+
+
+      // ===============================================
+      // LEVEL
+      // ===============================================
+
+      document.getElementById(
+        "levelOrganik"
+      ).textContent =
+        Number.isFinite(levelOrganik)
+          ? levelOrganik
+          : "-";
+
+
+      document.getElementById(
+        "levelNonOrganik"
+      ).textContent =
+        Number.isFinite(levelNonOrganik)
+          ? levelNonOrganik
+          : "-";
+
+
+      // ===============================================
+      // BAR
+      // ===============================================
+
+      if (
+        Number.isFinite(levelOrganik)
+      ) {
+
+        document.getElementById(
+          "barOrganik"
+        ).style.width =
+          Math.min(
+            Math.max(levelOrganik,0),
+            100
+          ) + "%";
+
+      }
+
+
+      if (
+        Number.isFinite(levelNonOrganik)
+      ) {
+
+        document.getElementById(
+          "barNonOrganik"
+        ).style.width =
+          Math.min(
+            Math.max(levelNonOrganik,0),
+            100
+          ) + "%";
+
+      }
+
+
+      // ===============================================
+      // TOTAL
+      // ===============================================
+
+      document.getElementById(
+        "totalOrganik"
+      ).textContent =
+        d.total_organik ?? 0;
+
+
+      document.getElementById(
+        "totalNonOrganik"
+      ).textContent =
+        d.total_nonorganik ?? 0;
+
+
+      // ===============================================
+      // CEK TONG
+      // ===============================================
+
+      const alertMessages = [];
+
+
+      const kondisi = [
+
+        {
+          nama: "ORGANIK",
+          level: levelOrganik
+        },
+
+        {
+          nama: "NON-ORGANIK",
+          level: levelNonOrganik
+        }
+
+      ];
+
+
+      kondisi.forEach(
+        item => {
+
+          if (
+            !Number.isFinite(
+              item.level
+            )
+          ) {
+
+            return;
+
+          }
+
+
+          // =========================================
+          // PENUH
+          // =========================================
+
+          if (
+            item.level >= 100
+          ) {
+
+            alertMessages.push(
+              "🚨 TONG " +
+              item.nama +
+              " PENUH (" +
+              item.level +
+              "%)! Segera kosongkan."
+            );
+
+
+            kirimNotifikasi(
+
+              "🚨 Tong " +
+              item.nama +
+              " PENUH",
+
+              "Tong " +
+              item.nama +
+              " sudah mencapai " +
+              item.level +
+              "%. Segera kosongkan."
+
+            );
+
+          }
+
+
+          // =========================================
+          // HAMPIR PENUH
+          // =========================================
+
+          else if (
+            item.level >= 80
+          ) {
+
+            alertMessages.push(
+              "⚠️ Tong " +
+              item.nama +
+              " hampir penuh (" +
+              item.level +
+              "%)."
+            );
+
+
+            kirimNotifikasi(
+
+              "⚠️ Tong " +
+              item.nama +
+              " hampir penuh",
+
+              "Tong " +
+              item.nama +
+              " sudah mencapai " +
+              item.level +
+              "%. Siapkan pengosongan."
+
+            );
+
+          }
+
+        }
+      );
+
+
+      // ===============================================
+      // TAMPILKAN ALERT
+      // ===============================================
+
+      const alertBox =
+        document.getElementById(
+          "alertBox"
+        );
+
+
+      if (
+        alertMessages.length > 0
+      ) {
+
+        alertBox.style.display =
+          "block";
+
+
+        alertBox.innerHTML =
+          alertMessages.join(
+            "<br>"
+          );
+
+      }
+
+      else {
+
+        alertBox.style.display =
+          "none";
+
+
+        alertBox.textContent =
+          "";
+
+      }
+
+
+      // ===============================================
+      // CHART
+      // ===============================================
+
+      if (
+        Number.isFinite(levelOrganik) &&
+        Number.isFinite(levelNonOrganik)
+      ) {
+
+        addChart(
+          levelOrganik,
+          levelNonOrganik
+        );
+
+      }
+
+
+      // ===============================================
+      // RAW MQTT
+      // ===============================================
+
+      document.getElementById(
+        "raw"
+      ).textContent =
+        JSON.stringify(
+          d,
+          null,
+          2
+        );
+
+    }
+
+    catch(error) {
+
+      console.error(
+        "Data MQTT tidak valid:",
+        error
+      );
+
+    }
+
+  }
+);
+
+
+// =====================================================
+// JALANKAN CEK NOTIFIKASI
+// =====================================================
+
+cekStatusNotifikasi();
+
+</script>
+
+</body>
+</html>
